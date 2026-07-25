@@ -78,7 +78,7 @@ def cluster_themes(themes: list[dict]) -> list[dict]:
             "source_count": len(source_ids),
             "source_ids": source_ids,
             "evidence": [
-                {"quote": m["evidence_quote"], "source_id": m["source_id"]}
+                {"quote": m["evidence_quote"], "source_id": m["source_id"], "sentiment": m.get("sentiment", "neutral")}
                 for m in members
             ],
         })
@@ -89,10 +89,10 @@ def cluster_themes(themes: list[dict]) -> list[dict]:
 if __name__ == "__main__":
     # Simulating output that would come from extract_themes_from_documents()
     sample_themes = [
-        {"theme": "Dark mode support", "evidence_quote": "I really wish the app had dark mode.", "source_id": "interview_01"},
-        {"theme": "Dark mode request", "evidence_quote": "Please add dark mode!! My eyes hurt using this app at night.", "source_id": "feedback_ticket_045"},
-        {"theme": "CSV export reliability", "evidence_quote": "every time I try to export my data to CSV, it takes forever and sometimes just fails silently.", "source_id": "interview_01"},
-        {"theme": "Search performance", "evidence_quote": "the search feature is way too slow when I have a lot of items.", "source_id": "feedback_ticket_045"},
+        {"theme": "Dark mode support", "evidence_quote": "I really wish the app had dark mode.", "source_id": "interview_01", "sentiment": "negative"},
+        {"theme": "Dark mode request", "evidence_quote": "Please add dark mode!! My eyes hurt using this app at night.", "source_id": "feedback_ticket_045", "sentiment": "negative"},
+        {"theme": "CSV export reliability", "evidence_quote": "every time I try to export my data to CSV, it takes forever and sometimes just fails silently.", "source_id": "interview_01", "sentiment": "negative"},
+        {"theme": "Search performance", "evidence_quote": "the search feature is way too slow when I have a lot of items.", "source_id": "feedback_ticket_045", "sentiment": "negative"},
     ]
 
     clusters = cluster_themes(sample_themes)
