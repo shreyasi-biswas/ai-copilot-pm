@@ -4,10 +4,20 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "packages", "ai-pipeline"))
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from pipeline import run_pipeline
 
 app = FastAPI(title="AI Copilot for PMs — API")
+
+# Allow the Next.js frontend (running on a different port) to call this API.
+# Without this, browsers block the request entirely — this isn't optional.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health")
@@ -25,11 +35,6 @@ class AnalyzeRequest(BaseModel):
 
 @app.post("/analyze")
 def analyze(request: AnalyzeRequest):
-    """
-    The main product endpoint: takes raw documents (interviews, feedback, etc.)
-    and returns a ranked, evidence-backed list of feature clusters —
-    the actual output a PM would look at.
-    """
     documents = [{"id": doc.id, "text": doc.text} for doc in request.documents]
     ranked_clusters = run_pipeline(documents)
     return {"ranked_features": ranked_clusters}
