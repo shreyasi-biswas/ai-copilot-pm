@@ -1,12 +1,12 @@
 import os
 import json
 from dotenv import load_dotenv
-import google.generativeai as genai
+from groq import Groq
 
 load_dotenv(dotenv_path="../../apps/api/.env")
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel("gemini-flash-lite-latest")
+groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+GROQ_MODEL = "openai/gpt-oss-20b"
 
 EXTRACTION_PROMPT = """You are analyzing a piece of customer feedback or an interview excerpt for a product manager.
 
@@ -36,11 +36,16 @@ def normalize(s: str) -> str:
 
 
 def extract_themes(text: str) -> dict:
-    """Extract themes from a SINGLE document. Same as before."""
+    """Extract themes from a SINGLE document, using Groq for fast inference."""
     prompt = EXTRACTION_PROMPT.format(text=text)
-    response = model.generate_content(prompt)
 
-    raw = response.text.strip()
+    response = groq_client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.2,
+    )
+
+    raw = response.choices[0].message.content.strip()
     if raw.startswith("```"):
         raw = raw.strip("`")
         raw = raw.replace("json\n", "", 1) if raw.startswith("json") else raw
@@ -86,7 +91,6 @@ def extract_themes_from_documents(documents: list[dict]) -> list[dict]:
 
 
 if __name__ == "__main__":
-    # Simulating multiple feedback sources — replace with real data later
     sample_documents = [
         {
             "id": "interview_01",

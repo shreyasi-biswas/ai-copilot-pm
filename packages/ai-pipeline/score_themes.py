@@ -9,9 +9,13 @@ SENTIMENT_WEIGHTS = {
 }
 
 
-def score_cluster(cluster: dict) -> float:
+def score_cluster(cluster: dict) -> tuple[float, float]:
     """
-    Computes a single priority score for a cluster of similar themes.
+    Computes a priority score for a cluster of similar themes, and returns
+    the average sentiment weight alongside it (needed separately for the DB,
+    since rice_score is a generated column computed by Postgres from
+    frequency * source_diversity * sentiment_weight — we can't just hand
+    over the pre-multiplied number).
 
     score = mention_count * source_count * avg_sentiment_weight
 
@@ -33,17 +37,22 @@ def score_cluster(cluster: dict) -> float:
             SENTIMENT_WEIGHTS.get(s, SENTIMENT_WEIGHTS["neutral"]) for s in sentiments
         ) / len(sentiments)
 
-    return round(mention_count * source_count * avg_sentiment_weight, 2)
+    priority_score = round(mention_count * source_count * avg_sentiment_weight, 2)
+    return priority_score, round(avg_sentiment_weight, 4)
 
 
 def rank_clusters(clusters: list[dict]) -> list[dict]:
     """
     Takes clusters (from cluster_themes.py) and returns them sorted by
     priority score, highest first — this is the actual ranked feature
-    list a PM would look at.
+    list a PM would look at. Also attaches sentiment_weight to each
+    cluster so downstream persistence has all three RICE components
+    (frequency, source_diversity, sentiment_weight) as separate fields.
     """
     for cluster in clusters:
-        cluster["priority_score"] = score_cluster(cluster)
+        priority_score, sentiment_weight = score_cluster(cluster)
+        cluster["priority_score"] = priority_score
+        cluster["sentiment_weight"] = sentiment_weight
 
     return sorted(clusters, key=lambda c: c["priority_score"], reverse=True)
 
@@ -55,25 +64,28 @@ if __name__ == "__main__":
             "cluster_theme": "Dark mode support",
             "mention_count": 2,
             "source_count": 2,
+            "confidence": 0.91,
             "evidence": [
-                {"quote": "I really wish the app had dark mode.", "source_id": "interview_01", "sentiment": "negative"},
-                {"quote": "Please add dark mode!! My eyes hurt using this app at night.", "source_id": "feedback_ticket_045", "sentiment": "negative"},
+                {"theme_text": "Dark mode support", "quote": "I really wish the app had dark mode.", "source_id": "interview_01", "sentiment": "negative"},
+                {"theme_text": "Dark mode request", "quote": "Please add dark mode!! My eyes hurt using this app at night.", "source_id": "feedback_ticket_045", "sentiment": "negative"},
             ],
         },
         {
             "cluster_theme": "CSV export reliability",
             "mention_count": 1,
             "source_count": 1,
+            "confidence": 1.0,
             "evidence": [
-                {"quote": "every time I try to export my data to CSV, it takes forever and sometimes just fails silently.", "source_id": "interview_01", "sentiment": "negative"},
+                {"theme_text": "CSV export reliability", "quote": "every time I try to export my data to CSV, it takes forever and sometimes just fails silently.", "source_id": "interview_01", "sentiment": "negative"},
             ],
         },
         {
             "cluster_theme": "Search performance",
             "mention_count": 1,
             "source_count": 1,
+            "confidence": 1.0,
             "evidence": [
-                {"quote": "the search feature is way too slow when I have a lot of items.", "source_id": "feedback_ticket_045", "sentiment": "negative"},
+                {"theme_text": "Search performance", "quote": "the search feature is way too slow when I have a lot of items.", "source_id": "feedback_ticket_045", "sentiment": "negative"},
             ],
         },
     ]
@@ -82,5 +94,5 @@ if __name__ == "__main__":
 
     print("RANKED FEATURE LIST\n")
     for i, cluster in enumerate(ranked, start=1):
-        print(f"{i}. {cluster['cluster_theme']}  —  score: {cluster['priority_score']}")
+        print(f"{i}. {cluster['cluster_theme']}  —  score: {cluster['priority_score']}  (sentiment_weight: {cluster['sentiment_weight']})")
         print(f"   Mentioned {cluster['mention_count']}x across {cluster['source_count']} source(s)")

@@ -41,8 +41,12 @@ def cluster_themes(themes: list[dict]) -> list[dict]:
     How it works: go through each theme one at a time. Compare it to every
     existing cluster's "representative" theme. If similar enough, merge in.
     If not similar to anything existing, start a new cluster.
+
+    Each cluster also tracks the similarity score of every member that joined
+    it, so we can report a confidence value (average similarity) once the
+    cluster is finalized — this feeds the `clusters.confidence` column.
     """
-    clusters = []  # each cluster: {"representative_text": str, "embedding": vector, "members": [...]}
+    clusters = []  # each cluster: {"representative_text", "embedding", "members", "similarity_scores"}
 
     for theme in themes:
         theme_text = theme["theme"]
@@ -59,11 +63,15 @@ def cluster_themes(themes: list[dict]) -> list[dict]:
 
         if best_cluster and best_score >= SIMILARITY_THRESHOLD:
             best_cluster["members"].append(theme)
+            best_cluster["similarity_scores"].append(best_score)
         else:
             clusters.append({
                 "representative_text": theme_text,
                 "embedding": embedding,
                 "members": [theme],
+                # the seed theme defines the cluster, so it's treated as a
+                # perfect match to itself for the purposes of confidence
+                "similarity_scores": [1.0],
             })
 
     # Build a clean summary for each cluster, ready for scoring/display later
@@ -72,13 +80,29 @@ def cluster_themes(themes: list[dict]) -> list[dict]:
         members = cluster["members"]
         source_ids = list(set(m["source_id"] for m in members))
 
+        # NumPy's cosine_similarity() returns np.float64 values, not native
+        # Python floats. SQLAlchemy/psycopg2 can't bind np.float64 directly
+        # into a SQL query — it silently stringifies it as "np.float64(...)",
+        # which Postgres then tries (and fails) to parse. Casting to float()
+        # here converts it to a plain Python float before it ever reaches
+        # the database layer.
+        confidence = float(round(
+            sum(cluster["similarity_scores"]) / len(cluster["similarity_scores"]), 4
+        ))
+
         summarized.append({
             "cluster_theme": cluster["representative_text"],
             "mention_count": len(members),
             "source_count": len(source_ids),
             "source_ids": source_ids,
+            "confidence": confidence,
             "evidence": [
-                {"quote": m["evidence_quote"], "source_id": m["source_id"], "sentiment": m.get("sentiment", "neutral")}
+                {
+                    "theme_text": m["theme"],
+                    "quote": m["evidence_quote"],
+                    "source_id": m["source_id"],
+                    "sentiment": m.get("sentiment", "neutral"),
+                }
                 for m in members
             ],
         })
@@ -98,7 +122,7 @@ if __name__ == "__main__":
     clusters = cluster_themes(sample_themes)
 
     for c in clusters:
-        print(f"\nCLUSTER: {c['cluster_theme']}")
+        print(f"\nCLUSTER: {c['cluster_theme']}  (confidence: {c['confidence']})")
         print(f"  Mentioned {c['mention_count']} time(s) across {c['source_count']} source(s): {c['source_ids']}")
         for e in c["evidence"]:
-            print(f"    - [{e['source_id']}] \"{e['quote']}\"")
+            print(f"    - [{e['source_id']}] \"{e['theme_text']}\" — \"{e['quote']}\"")
