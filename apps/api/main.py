@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from pipeline import run_pipeline
 from db.base import get_db
 from db.persist import persist_analysis
+from db.queries import get_dashboard_stats
 
 app = FastAPI(title="AI Copilot for PMs — API")
 
@@ -49,3 +50,7 @@ def analyze(request: AnalyzeRequest, db: Session = Depends(get_db)):
     persist_analysis(db, documents, ranked_clusters)
 
     return {"ranked_features": ranked_clusters}
+
+@app.get("/dashboard/stats")
+def dashboard_stats(db: Session = Depends(get_db)):
+    return get_dashboard_stats(db)
